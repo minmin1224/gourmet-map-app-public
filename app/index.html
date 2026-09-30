@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>即席グルメMAP</title>
+<meta name="theme-color" content="#fff7ed">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root {
+    --bg: #fdf8f2;
+    --card-bg: #ffffff;
+    --accent: #e8622c;
+    --accent-dark: #c94f1f;
+    --text: #2a2320;
+    --text-sub: #7a6f68;
+    --border: #ecddd0;
+    --error-bg: #fdeceb;
+    --error-text: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: 24px;
+  }
+  header {
+    padding: 16px;
+    text-align: center;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 1.3rem;
+  }
+  header p {
+    margin: 4px 0 0;
+    font-size: 0.8rem;
+    color: var(--text-sub);
+  }
+  main {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 12px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .field {
+    margin-bottom: 10px;
+  }
+  .field label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-sub);
+    margin-bottom: 4px;
+  }
+  select {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    font-size: 0.95rem;
+    color: var(--text);
+  }
+  button#search-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button#search-btn:disabled {
+    background: #d8b7a5;
+    cursor: not-allowed;
+  }
+  button.secondary {
+    background: none;
+    border: 1px solid var(--accent);
+    color: var(--accent-dark);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  #status-msg {
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    text-align: center;
+    margin: 6px 0;
+    min-height: 1.2em;
+  }
+  #status-msg.error {
+    color: var(--error-text);
+    background: var(--error-bg);
+    border-radius: 8px;
+    padding: 8px;
+  }
+  #retry-location-btn {
+    display: block;
+    margin: 8px auto 0;
+  }
+  #retry-location-btn[hidden] {
+    display: none;
+  }
+  #map {
+    height: 260px;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+  }
+  ul#result-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .shop-card {
+    display: flex;
+    gap: 10px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .shop-card.active {
+    border-color: var(--accent);
+  }
+  .shop-card img {
+    width: 84px;
+    height: 84px;
+    object-fit: cover;
+    border-radius: 8px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+  .shop-info h3 {
+    margin: 0 0 4px;
+    font-size: 0.95rem;
+  }
+  .shop-meta, .shop-catch, .shop-access {
+    margin: 2px 0;
+    font-size: 0.78rem;
+    color: var(--text-sub);
+  }
+  .shop-info a {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 0.8rem;
+    color: var(--accent-dark);
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>即席グルメMAP</h1>
+  <p>ジャンル・予算・徒歩距離を選んで、近くのおすすめのお店を探す</p>
+</header>
+<main>
+  <div class="card">
+    <div class="field">
+      <label for="genre-select">ジャンル</label>
+      <select id="genre-select"><option value="">読み込み中…</option></select>
+    </div>
+    <div class="field">
+      <label for="budget-select">予算</label>
+      <select id="budget-select"><option value="">読み込み中…</option></select>
+    </div>
+    <div class="field">
+      <label for="range-select">徒歩距離</label>
+      <select id="range-select"></select>
+    </div>
+    <button id="search-btn" disabled>この条件で探す</button>
+    <div id="status-msg"></div>
+    <button id="retry-location-btn" class="secondary" hidden>現在地取得を再試行</button>
+  </div>
+
+  <div id="map"></div>
+  <ul id="result-list"></ul>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+const WORKER_BASE = "https://gourmet-map-proxy.peakp-apps.workers.dev";
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // マスタ情報は30日キャッシュ
+
+let map = null;
+let userMarker = null;
+let shopMarkers = [];
+let currentPosition = null;
+
+function $(id) { return document.getElementById(id); }
+
+function setStatus(msg, isError) {
+  const el = $("status-msg");
+  el.textContent = msg || "";
+  el.classList.toggle("error", !!isError);
+}
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function getCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { value, expiresAt } = JSON.parse(raw);
+    if (Date.now() > expiresAt) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function setCache(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ value, expiresAt: Date.now() + CACHE_TTL_MS }));
+  } catch {
+    // localStorageが使えない環境では単に諦める
+  }
+}
+
+async function callApi(endpoint, params) {
+  const url = new URL(`${WORKER_BASE}/api/${endpoint}`);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== "" && v != null) url.searchParams.set(k, v);
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("サーバーとの通信に失敗しました");
+  const data = await res.json();
+  if (data.results?.error) throw new Error(data.results.error[0].message);
+  return data;
+}
+
+function renderSelectOptions(selectId, list, includeAll) {
+  const sel = $(selectId);
+  sel.innerHTML = "";
+  if (includeAll) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "指定なし";
+    sel.appendChild(opt);
+  }
+  for (const item of list) {
+    const opt = document.createElement("option");
+    opt.value = item.code;
+    opt.textContent = item.name;
+    sel.appendChild(opt);
+  }
+}
+
+function renderRangeOptions() {
+  const ranges = [
+    { code: "1", name: "徒歩5分以内(300m)" },
+    { code: "2", name: "徒歩10分以内(500m)" },
+    { code: "3", name: "徒歩15分以内(1000m)" },
+    { code: "4", name: "徒歩20分以内(2000m)" },
+    { code: "5", name: "徒歩25分以内(3000m)" },
+  ];
+  renderSelectOptions("range-select", ranges);
+  $("range-select").value = "3";
+}
+
+async function loadMasterList(endpoint, cacheKey, selectId) {
+  const cached = getCache(cacheKey);
+  if (cached) {
+    renderSelectOptions(selectId, cached, true);
+    return;
+  }
+  try {
+    const data = await callApi(endpoint, {});
+    const list = data.results[endpoint].map((g) => ({ code: g.code, name: g.name }));
+    setCache(cacheKey, list);
+    renderSelectOptions(selectId, list, true);
+  } catch (e) {
+    // 位置情報エラーなど他の重要なステータス表示を上書きしないよう、
+    // ここでは共有ステータス欄は使わずコンソールにのみ記録する。
+    // 失敗時は選択肢が「指定なし」のみになるのでUI上でも分かる。
+    console.error(`${endpoint} master list load failed`, e);
+    renderSelectOptions(selectId, [], true);
+  }
+}
+
+function initMap(pos) {
+  if (!map) {
+    map = L.map("map").setView([pos.lat, pos.lng], 16);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+      maxZoom: 19,
+    }).addTo(map);
+  } else {
+    map.setView([pos.lat, pos.lng], 16);
+  }
+  if (userMarker) userMarker.remove();
+  userMarker = L.circleMarker([pos.lat, pos.lng], {
+    radius: 8,
+    color: "#1e6fd9",
+    fillColor: "#4a90f2",
+    fillOpacity: 0.9,
+  }).addTo(map).bindPopup("現在地");
+}
+
+function requestLocation() {
+  setStatus("現在地を取得中…");
+  $("retry-location-btn").hidden = true;
+  $("search-btn").disabled = true;
+  if (!navigator.geolocation) {
+    setStatus("このブラウザは位置情報に対応していません", true);
+    $("retry-location-btn").hidden = false;
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      currentPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      setStatus("");
+      initMap(currentPosition);
+      $("search-btn").disabled = false;
+    },
+    () => {
+      setStatus("位置情報を取得できませんでした。ブラウザの設定で位置情報の利用を許可してください。", true);
+      $("retry-location-btn").hidden = false;
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function clearMarkers() {
+  shopMarkers.forEach((m) => m.marker.remove());
+  shopMarkers = [];
+}
+
+function focusShop(index) {
+  const entry = shopMarkers[index];
+  if (!entry) return;
+  map.setView(entry.marker.getLatLng(), 17);
+  entry.marker.openPopup();
+  document.querySelectorAll(".shop-card").forEach((el) => el.classList.remove("active"));
+  document.querySelector(`.shop-card[data-index="${index}"]`)?.classList.add("active");
+}
+
+function renderResults(shops) {
+  clearMarkers();
+  const list = $("result-list");
+  list.innerHTML = "";
+
+  if (shops.length === 0) {
+    setStatus("条件に合うお店が見つかりませんでした。条件を緩めてみてください。", true);
+    return;
+  }
+  setStatus(`${shops.length}件見つかりました`);
+
+  const bounds = [[currentPosition.lat, currentPosition.lng]];
+  shops.forEach((shop, index) => {
+    const li = document.createElement("li");
+    li.className = "shop-card";
+    li.dataset.index = String(index);
+    const photo = shop.photo?.pc?.m || shop.photo?.mobile?.m || "";
+    li.innerHTML = `
+      ${photo ? `<img src="${photo}" alt="" loading="lazy">` : ""}
+      <div class="shop-info">
+        <h3>${escapeHtml(shop.name)}</h3>
+        <p class="shop-meta">${escapeHtml(shop.genre?.name || "")} ・ ${escapeHtml(shop.budget?.name || "")}</p>
+        ${shop.catch ? `<p class="shop-catch">${escapeHtml(shop.catch)}</p>` : ""}
+        <p class="shop-access">${escapeHtml(shop.access || "")}</p>
+        ${shop.urls?.pc ? `<a href="${escapeHtml(shop.urls.pc)}" target="_blank" rel="noopener">ホットペッパーで見る</a>` : ""}
+      </div>
+    `;
+    li.addEventListener("click", () => focusShop(index));
+    list.appendChild(li);
+
+    const marker = L.marker([shop.lat, shop.lng]).addTo(map).bindPopup(escapeHtml(shop.name));
+    marker.on("click", () => focusShop(index));
+    shopMarkers.push({ marker });
+    bounds.push([shop.lat, shop.lng]);
+  });
+  map.fitBounds(bounds, { padding: [30, 30] });
+}
+
+async function onSearch() {
+  if (!currentPosition) return;
+  setStatus("検索中…");
+  $("search-btn").disabled = true;
+  try {
+    const params = {
+      lat: currentPosition.lat,
+      lng: currentPosition.lng,
+      range: $("range-select").value,
+      genre: $("genre-select").value,
+      budget: $("budget-select").value,
+      order: 4,
+      count: 20,
+    };
+    const data = await callApi("gourmet", params);
+    renderResults(data.results.shop || []);
+  } catch (e) {
+    setStatus(`検索に失敗しました: ${e.message}`, true);
+  } finally {
+    $("search-btn").disabled = false;
+  }
+}
+
+function init() {
+  renderRangeOptions();
+  loadMasterList("genre", "gourmet-map-genre-list", "genre-select");
+  loadMasterList("budget", "gourmet-map-budget-list", "budget-select");
+  requestLocation();
+  $("search-btn").addEventListener("click", onSearch);
+  $("retry-location-btn").addEventListener("click", requestLocation);
+}
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+}
+
+init();
+</script>
+</body>
+</html>
